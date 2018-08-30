@@ -1,0 +1,97 @@
+pragma solidity ^0.4.22;
+
+import "http://github.com/OpenZeppelin/openzeppelin-solidity/contracts/ownership/Ownable.sol";
+  
+//Reputation store abstract contract. 
+ contract EternalStorageStore {
+     event newUser(string _pseudoName, bytes32 pubKey);
+     mapping (bytes32 => uint256) internal uintStorage;
+     mapping (bytes32 => string) internal stringStorage;//store reputation ID
+ }
+ 
+  //behaviour contract implementation, with EternalStorageStructure for storage layout.
+ contract Implementation is EternalStorageStore {
+    function setRepID(string _pseudoName) public returns (uint num2){
+         bytes32 pubKey = keccak256(msg.sender, _pseudoName);
+         stringStorage[pubKey] = _pseudoName;
+         newUser(_pseudoName, pubKey);
+   }
+}
+/* @dev Gives the possibility to delegate any call to a foreign implementation.*/
+ contract Proxy is Ownable{
+     
+ 
+  address _impl = 0x0; //default value
+  bytes32 private constant implementationPosition = keccak256("implementation");  //const stored to memory
+  
+  constructor() {
+  address implementationAddr = _impl;      
+  bytes32 position = implementationPosition;
+    assembly {
+      sstore(position, implementationAddr)
+    }
+    //or
+   /* assembly {
+       let _impl := sload(position_slot)
+      
+    } */
+      
+      
+  }
+  
+  
+  //bytes4 methodSignature1 = 0x00000000; //default value
+  function setImplementation(address a) public onlyOwner { 
+       _impl = a;
+   }
+  function getImplementation() returns (address) {
+    if (_impl != 0x0) {
+    return _impl;
+    }
+  }
+   
+   //if routing msg calls to implementation contract methods manually
+   function setMethodSignature(bytes4 methodSignature) {
+       
+   }
+ 
+   event emitMsgDataAndMethodID(bytes msgData, bytes4 methodID);
+   
+   function getMethodIDFromCallData() {
+       bytes memory msgData = bytes(msg.data);
+       bytes4 methodID;
+      // bytes4 methodID = bytes4(msgData);
+       
+      // bytes memory methodID = sha3(msg.data);   // doesn't work.
+      
+      assembly {
+          let freememstart := mload(0x40)
+          calldatacopy(freememstart, 0, 8) //copies 8 bytes from calladta at position 0 to memory position freeMem
+          sstore(methodID, 0x0)  //grab methodID from top of stack.
+          
+      }   
+      emitMsgDataAndMethodID(msgData, methodID);
+          
+        
+   }
+   
+  /* This function will return whatever the implementation call returns*/
+  //fallback function.
+  function() payable public {
+    address _impl = getImplementation();
+    require(_impl != 0x0); //ensure impelmentaiton is set.
+    
+
+    assembly {
+      let ptr := mload(0x40)
+      calldatacopy(ptr, 0, calldatasize)
+      let result := delegatecall(gas, _impl, ptr, calldatasize, 0, 0)
+      let size := returndatasize
+      returndatacopy(ptr, 0, size)
+
+      switch result
+      case 0 { revert(ptr, size) }
+      default { return(ptr, size) }
+    }
+  }
+}
